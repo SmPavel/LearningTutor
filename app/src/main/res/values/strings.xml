@@ -1,0 +1,20 @@
+<!-- app/src/main/res/values/strings.xml -->
+<resources>
+    <string name="app_name">Умный репетитор</string>
+    <string name="select_topic">Выберите тему</string>
+    <string name="check_answer">Проверить</string>
+    <string name="next_question">Следующий вопрос</string>
+    <string name="progress">Прогресс</string>
+    <string name="topics">Темы</string>
+    <string name="back">Назад</string>
+    <string name="learning_progress">Прогресс обучения</string>
+    <string name="topic_selection">Выбор темы</string>
+    <string name="overall_statistics">Общая статистика</string>
+    <string name="knowledge_level">Уровень θ</string>
+    <string name="accuracy">Точность</string>
+    <string name="solved">Решено</string>
+    <string name="avg_time">Среднее время</string>
+    <string name="topics_list">Темы</string>
+    <string name="knowledge_dynamics">Динамика уровня знаний (θ)</string>
+    <string name="current_level">Текущий уровень</string>
+</resources>
