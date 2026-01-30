@@ -1,3 +1,4 @@
+// app/src/main/java/com/learningtutor/data/repositories/QuestionRepository.kt
 package com.learningtutor.data.repositories
 
 import com.google.gson.Gson
@@ -39,6 +40,15 @@ class QuestionRepository @Inject constructor(
                     topic = "Дроби",
                     difficulty = 1.0,
                     generatedByAI = false
+                ),
+                Question(
+                    text = "Сократите дробь 8/12",
+                    optionsJson = """["2/3", "4/6", "1/3", "3/4"]""",
+                    correctIndex = 0,
+                    explanation = "Делим числитель и знаменатель на 4: 8÷4=2, 12÷4=3",
+                    topic = "Дроби",
+                    difficulty = 0.8,
+                    generatedByAI = false
                 )
             ),
             "Уравнения" to listOf(
@@ -49,6 +59,55 @@ class QuestionRepository @Inject constructor(
                     explanation = "2x = 15 - 5 = 10, x = 10 / 2 = 5",
                     topic = "Уравнения",
                     difficulty = 0.8,
+                    generatedByAI = false
+                ),
+                Question(
+                    text = "Решите: 3x - 7 = 8",
+                    optionsJson = """["x = 5", "x = 3", "x = 7", "x = 4"]""",
+                    correctIndex = 0,
+                    explanation = "3x = 8 + 7 = 15, x = 15 / 3 = 5",
+                    topic = "Уравнения",
+                    difficulty = 1.0,
+                    generatedByAI = false
+                )
+            ),
+            "Геометрия" to listOf(
+                Question(
+                    text = "Площадь квадрата со стороной 5 см равна:",
+                    optionsJson = """["25 см²", "20 см²", "30 см²", "15 см²"]""",
+                    correctIndex = 0,
+                    explanation = "Площадь квадрата = сторона² = 5² = 25",
+                    topic = "Геометрия",
+                    difficulty = 1.0,
+                    generatedByAI = false
+                ),
+                Question(
+                    text = "Периметр прямоугольника со сторонами 4 см и 6 см равен:",
+                    optionsJson = """["20 см", "24 см", "10 см", "16 см"]""",
+                    correctIndex = 0,
+                    explanation = "Периметр = 2 × (4 + 6) = 2 × 10 = 20 см",
+                    topic = "Геометрия",
+                    difficulty = 1.2,
+                    generatedByAI = false
+                )
+            ),
+            "Проценты" to listOf(
+                Question(
+                    text = "Чему равно 15% от 200?",
+                    optionsJson = """["30", "15", "20", "25"]""",
+                    correctIndex = 0,
+                    explanation = "15% от 200 = 200 × 0.15 = 30",
+                    topic = "Проценты",
+                    difficulty = 1.0,
+                    generatedByAI = false
+                ),
+                Question(
+                    text = "Если цена товара 1000 руб., а скидка 20%, сколько стоит товар?",
+                    optionsJson = """["800 руб.", "200 руб.", "900 руб.", "850 руб."]""",
+                    correctIndex = 0,
+                    explanation = "Скидка = 1000 × 0.20 = 200 руб. Цена со скидкой = 1000 - 200 = 800 руб.",
+                    topic = "Проценты",
+                    difficulty = 1.5,
                     generatedByAI = false
                 )
             )
@@ -229,6 +288,114 @@ class QuestionRepository @Inject constructor(
                 } else 0.0
             )
         }
+    }
+
+    // === НОВЫЕ МЕТОДЫ ДЛЯ ГЕНЕРАЦИИ ===
+
+    /**
+     * Генерирует новый вопрос по теме (заглушка без LLM)
+     */
+    suspend fun generateNewQuestion(
+        topic: String,
+        difficulty: Double? = null
+    ): Question? {
+        val user = userRepository.getCurrentUserSync() ?: return null
+
+        // Определяем сложность на основе уровня знаний пользователя
+        val targetDifficulty = difficulty ?: calculateTargetDifficulty(user.currentTheta)
+
+        // Создаем простой вопрос без LLM (пока)
+        return createDefaultQuestion(topic, targetDifficulty)
+    }
+
+    /**
+     * Получает или генерирует следующий вопрос
+     */
+    suspend fun getOrGenerateQuestion(topic: String): Question? {
+        // 1. Пробуем взять существующий неотвеченный вопрос
+        val user = userRepository.getCurrentUserSync() ?: return null
+        val newQuestions = questionDao.getNewQuestionsForUser(user.id, topic, 1)
+        if (newQuestions.isNotEmpty()) {
+            return newQuestions.first()
+        }
+
+        // 2. Пробуем сгенерировать новый
+        return generateNewQuestion(topic)
+    }
+
+    private fun calculateTargetDifficulty(userTheta: Double): Double {
+        // Адаптивная сложность на основе уровня знаний
+        return when {
+            userTheta < -1.0 -> 0.5  // Очень низкий уровень
+            userTheta < 0.0 -> 1.0   // Низкий уровень
+            userTheta < 1.0 -> 2.0   // Средний уровень
+            userTheta < 2.0 -> 3.0   // Выше среднего
+            else -> 4.0              // Высокий уровень
+        }
+    }
+
+    private fun createDefaultQuestion(topic: String, difficulty: Double): Question {
+        // Проверяем, есть ли seed вопросы для этой темы
+        val seedQuestion = SEED_QUESTIONS[topic]?.firstOrNull()
+
+        return if (seedQuestion != null) {
+            // Используем seed вопрос с обновленной сложностью
+            seedQuestion.copy(difficulty = difficulty)
+        } else {
+            // Создаем простой вопрос по умолчанию
+            when (topic) {
+                "Алгебра" -> Question(
+                    text = "Упростите выражение: 2a + 3a - a",
+                    optionsJson = """["4a", "5a", "3a", "6a"]""",
+                    correctIndex = 0,
+                    explanation = "2a + 3a - a = (2 + 3 - 1)a = 4a",
+                    topic = topic,
+                    difficulty = difficulty,
+                    generatedByAI = false
+                )
+                "Тригонометрия" -> Question(
+                    text = "Чему равен sin(90°)?",
+                    optionsJson = """["1", "0", "0.5", "√2/2"]""",
+                    correctIndex = 0,
+                    explanation = "sin(90°) = 1",
+                    topic = topic,
+                    difficulty = difficulty,
+                    generatedByAI = false
+                )
+                else -> Question(
+                    text = "Чему равно 7 × 8?",
+                    optionsJson = """["56", "54", "58", "64"]""",
+                    correctIndex = 0,
+                    explanation = "7 × 8 = 56",
+                    topic = topic,
+                    difficulty = 1.0,
+                    generatedByAI = false
+                )
+            }
+        }
+    }
+
+    /**
+     * Устанавливает менеджер генерации
+     */
+    fun setGenerationManager(manager: com.learningtutor.core.ml.GenerationManager) {
+        this.generationManager = manager
+    }
+
+    private var generationManager: com.learningtutor.core.ml.GenerationManager? = null
+
+    /**
+     * Добавляет сгенерированный вопрос в базу данных
+     */
+    suspend fun insertGeneratedQuestion(question: Question) {
+        questionDao.insert(question)
+    }
+
+    /**
+     * Возвращает количество сгенерированных вопросов по теме
+     */
+    suspend fun countGeneratedQuestions(topic: String): Int {
+        return questionDao.getAIGeneratedQuestions(topic).size
     }
 
     // Геттер для UserRepository
