@@ -3,8 +3,8 @@ package com.learningtutor
 import android.app.Application
 import android.util.Log
 import com.learningtutor.core.ml.GenerationManager
-import com.learningtutor.data.database.AppDatabase
 import com.learningtutor.data.repositories.QuestionRepository
+import com.learningtutor.data.repositories.UserRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,9 +18,10 @@ class LearningTutorApplication : Application() {
     lateinit var questionRepository: QuestionRepository
 
     @Inject
-    lateinit var database: AppDatabase
+    lateinit var userRepository: UserRepository
 
-    private lateinit var generationManager: GenerationManager
+    @Inject
+    lateinit var generationManager: GenerationManager
 
     override fun onCreate() {
         super.onCreate()
@@ -33,27 +34,57 @@ class LearningTutorApplication : Application() {
 
     private suspend fun initializeApp() {
         try {
-            // 1. Инициализируем базу данных
-            database.query("SELECT 1", null) // Простой запрос для инициализации
+            Log.d("LearningTutor", "Начинаем инициализацию приложения...")
 
-            // 2. Инициализируем начальные данные
+            // 1. Создаем пользователя, если его нет
+            userRepository.createUserIfNotExists()
+            Log.d("LearningTutor", "Пользователь создан/найден")
+
+            // 2. Инициализируем начальные вопросы
             questionRepository.initializeSeedQuestions()
+            Log.d("LearningTutor", "Seed вопросы инициализированы")
 
-            // 3. Инициализируем генератор заданий
-            generationManager = GenerationManager(this, questionRepository)
+            // 3. Инициализируем генератор
             generationManager.initialize()
+            Log.d("LearningTutor", "Генератор инициализирован")
 
-            // 4. Связываем генератор с репозиторием
-            questionRepository.setGenerationManager(generationManager)
-
+            // 4. Пробуем сгенерировать первые вопросы
+            generateInitialQuestions()
             Log.d("LearningTutor", "Application initialized successfully")
+
         } catch (e: Exception) {
             Log.e("LearningTutor", "Failed to initialize application", e)
         }
     }
 
+    private suspend fun generateInitialQuestions() {
+        try {
+            val topics = questionRepository.getAllTopics()
+            if (topics.isEmpty()) return
+
+            // Генерируем по 1 вопросу для каждой темы
+            topics.forEach { topic ->
+                try {
+                    val generated = questionRepository.generateNewQuestion(topic)
+                    if (generated != null) {
+                        questionRepository.insertGeneratedQuestion(generated)
+                        Log.d("LearningTutor", "Сгенерирован вопрос по теме: $topic")
+                    }
+                } catch (e: Exception) {
+                    Log.w("LearningTutor", "Не удалось сгенерировать вопрос для темы $topic: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("LearningTutor", "Ошибка при генерации начальных вопросов", e)
+        }
+    }
+
     override fun onTerminate() {
+        try {
+            generationManager.cleanup()
+        } catch (e: Exception) {
+            Log.e("LearningTutor", "Ошибка при очистке генератора", e)
+        }
         super.onTerminate()
-        generationManager.cleanup()
     }
 }

@@ -1,254 +1,116 @@
 package com.learningtutor.ui.screens
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.learningtutor.ui.models.LearningUIState
+import com.learningtutor.ui.screens.components.*
 import com.learningtutor.ui.viewmodels.LearningViewModel
+import android.util.Log
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LearningScreen(
     onProgressClick: () -> Unit,
     onTopicsClick: () -> Unit,
-    viewModel: LearningViewModel
+    viewModel: LearningViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        Log.d("LearningScreen", "Composable запущен")
+        Log.d("LearningScreen", "Initial state: isLoading=${uiState.isLoading}")
+    }
+
+    // Отладочная информация
+    SideEffect {
+        Log.d("LearningScreen", "State обновлен: isLoading=${uiState.isLoading}, error=${uiState.errorMessage}")
+    }
+
+    // Временный байпас: если долго грузится
+    LaunchedEffect(uiState.isLoading) {
+        if (uiState.isLoading) {
+            delay(3000) // Ждем 3 секунды
+            if (uiState.isLoading && uiState.currentQuestion == null) {
+                Log.w("LearningScreen", "Таймаут загрузки, показываем тестовый вопрос")
+                viewModel.loadTestQuestion()
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Умный репетитор") },
-                actions = {
-                    IconButton(onClick = onProgressClick) {
-                        Icon(Icons.Default.BarChart, "Прогресс")
-                    }
-                    IconButton(onClick = onTopicsClick) {
-                        Icon(Icons.Default.List, "Темы")
-                    }
-                }
+                title = { Text("Умный репетитор") }
             )
         }
-    ) { paddingValues ->
-        Column(
+    ) { padding ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
+                .padding(padding)
         ) {
-            // Текущая тема
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Текущая тема",
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Text(
-                        text = uiState.currentTopic ?: "Не выбрана",
-                        style = MaterialTheme.typography.headlineSmall
-                    )
-
-                    // Уровень знаний по теме
-                    LinearProgressIndicator(
-                        progress = uiState.topicMastery.toFloat(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    )
-                    Text(
-                        text = "Уровень знаний: ${(uiState.topicMastery * 100).toInt()}%",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.align(Alignment.End)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Текущее задание
-            if (uiState.currentQuestion != null) {
-                QuestionCard(
-                    question = uiState.currentQuestion!!,
-                    selectedAnswer = uiState.selectedAnswer,
-                    onAnswerSelected = viewModel::selectAnswer,
-                    onSubmit = { viewModel.submitAnswer() },
-                    isSubmitted = uiState.isAnswerSubmitted,
-                    showExplanation = uiState.showExplanation,
-                    onNextQuestion = viewModel::loadNextQuestion
-                )
-            } else {
-                // Загрузка или нет тем
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator()
-                    } else {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "Выберите тему для начала обучения",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = onTopicsClick) {
-                                Text("Выбрать тему")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Статистика
-            if (uiState.showStats) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Статистика",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            StatItem("θ", String.format("%.2f", uiState.currentTheta))
-                            StatItem("Всего", uiState.totalQuestions.toString())
-                            StatItem("Верно", uiState.correctAnswers.toString())
-                            StatItem("%", String.format("%.0f%%", uiState.accuracy * 100))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun QuestionCard(
-    question: com.learningtutor.ui.models.QuestionUI,
-    selectedAnswer: Int?,
-    onAnswerSelected: (Int) -> Unit,
-    onSubmit: () -> Unit,
-    isSubmitted: Boolean,
-    showExplanation: Boolean,
-    onNextQuestion: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            // Текст вопроса
+            // Отладочный текст
             Text(
-                text = question.text,
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 16.dp)
+                text = "Debug: isLoading=${uiState.isLoading}, error=${uiState.errorMessage}",
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error
             )
 
-            // Варианты ответов
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(question.options.size) { index ->
-                    val option = question.options[index]
-                    val isCorrect = index == question.correctIndex
-
-                    OutlinedButton(
-                        onClick = { if (!isSubmitted) onAnswerSelected(index) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = when {
-                                !isSubmitted && selectedAnswer == index ->
-                                    MaterialTheme.colorScheme.primaryContainer
-                                isSubmitted && isCorrect ->
-                                    MaterialTheme.colorScheme.tertiaryContainer
-                                isSubmitted && selectedAnswer == index && !isCorrect ->
-                                    MaterialTheme.colorScheme.errorContainer
-                                else -> MaterialTheme.colorScheme.surface
-                            }
-                        )
-                    ) {
-                        Text(
-                            text = option,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
+            when {
+                uiState.isLoading -> {
+                    FullScreenLoader()
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Кнопки действий
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (!isSubmitted) {
-                    Button(
-                        onClick = onSubmit,
-                        enabled = selectedAnswer != null,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Проверить")
-                    }
-                } else {
-                    Button(
-                        onClick = onNextQuestion,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Следующий вопрос")
-                    }
+                uiState.errorMessage != null -> {
+                    ErrorScreen(
+                        error = uiState.errorMessage!!,
+                        onRetry = { viewModel.retryLoading() }
+                    )
                 }
-            }
 
-            // Объяснение
-            if (showExplanation && question.explanation.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Объяснение: ${question.explanation}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                uiState.currentQuestion != null -> {
+                    ContentScreen(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        onProgressClick = onProgressClick,
+                        onTopicsClick = onTopicsClick
+                    )
+                }
+
+                else -> {
+                    ErrorScreen(
+                        error = "Нет доступных вопросов",
+                        onRetry = { viewModel.retryLoading() }
+                    )
+                }
             }
         }
     }
 }
-
 @Composable
-fun StatItem(label: String, value: String) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+fun FullScreenLoader() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            CircularProgressIndicator()
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Загрузка вопросов...", style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }

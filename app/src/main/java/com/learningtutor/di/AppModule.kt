@@ -2,6 +2,7 @@ package com.learningtutor.di
 
 import android.content.Context
 import androidx.room.Room
+import com.learningtutor.core.ml.GenerationManager
 import com.learningtutor.data.database.AppDatabase
 import com.learningtutor.data.database.ProgressDao
 import com.learningtutor.data.database.QuestionDao
@@ -58,5 +59,14 @@ object AppModule {
         userRepository: UserRepository
     ): QuestionRepository {
         return QuestionRepository(questionDao, progressDao, scheduleDao, userRepository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideGenerationManager(
+        @ApplicationContext context: Context,
+        questionRepository: QuestionRepository
+    ): GenerationManager {
+        return GenerationManager(context, questionRepository)
     }
 }

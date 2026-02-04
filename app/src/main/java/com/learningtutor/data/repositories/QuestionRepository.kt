@@ -1,6 +1,6 @@
-// app/src/main/java/com/learningtutor/data/repositories/QuestionRepository.kt
 package com.learningtutor.data.repositories
 
+import android.util.Log
 import com.google.gson.Gson
 import com.learningtutor.core.ml.SpacedRepetition
 import com.learningtutor.core.models.*
@@ -20,7 +20,6 @@ class QuestionRepository @Inject constructor(
     private val gson = Gson()
 
     companion object {
-        // Seed вопросы для каждой темы
         private val SEED_QUESTIONS = mapOf(
             "Дроби" to listOf(
                 Question(
@@ -115,13 +114,32 @@ class QuestionRepository @Inject constructor(
     }
 
     suspend fun initializeSeedQuestions() {
-        // Проверяем, есть ли уже вопросы
-        val count = questionDao.countAll()
-        if (count == 0) {
-            // Добавляем seed вопросы
-            SEED_QUESTIONS.forEach { (topic, questions) ->
-                questionDao.insertAll(questions)
+        try {
+            // Проверяем, есть ли уже вопросы
+            val count = questionDao.countAll()
+            Log.d("QuestionRepository", "Всего вопросов в базе: $count")
+
+            if (count == 0) {
+                Log.d("QuestionRepository", "Добавляем seed вопросы...")
+
+                // Добавляем seed вопросы
+                SEED_QUESTIONS.forEach { (topic, questions) ->
+                    questionDao.insertAll(questions)
+                    Log.d("QuestionRepository", "Добавлено ${questions.size} вопросов по теме: $topic")
+                }
+
+                // Проверяем после добавления
+                val afterCount = questionDao.countAll()
+                Log.d("QuestionRepository", "После добавления: $afterCount вопросов")
+            } else {
+                Log.d("QuestionRepository", "В базе уже есть $count вопросов")
+
+                // Проверяем темы
+                val topics = questionDao.getAllTopics()
+                Log.d("QuestionRepository", "Темы в базе: $topics")
             }
+        } catch (e: Exception) {
+            Log.e("QuestionRepository", "Ошибка при инициализации seed вопросов", e)
         }
     }
 
@@ -269,6 +287,16 @@ class QuestionRepository @Inject constructor(
 
     suspend fun getTopicStats(userId: String, topic: String): TopicStats? {
         return progressDao.getTopicStats(userId, topic)
+    }
+    suspend fun getAllTopics(): List<String> {
+        return try {
+            val topics = questionDao.getAllTopics()
+            Log.d("QuestionRepository", "Получено тем: ${topics.size}, список: $topics")
+            topics
+        } catch (e: Exception) {
+            Log.e("QuestionRepository", "Ошибка получения тем", e)
+            emptyList()
+        }
     }
 
     suspend fun getAllTopicsWithProgress(userId: String): List<TopicWithProgressUI> {
