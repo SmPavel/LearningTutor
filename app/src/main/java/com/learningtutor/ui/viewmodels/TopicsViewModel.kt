@@ -6,12 +6,14 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import com.learningtutor.data.repositories.QuestionRepository
-import com.learningtutor.ui.models.TopicWithProgressUI
+import com.learningtutor.data.repositories.UserRepository
+import com.learningtutor.ui.models.TopicsUIState
 import javax.inject.Inject
 
 @HiltViewModel
 class TopicsViewModel @Inject constructor(
-    private val questionRepository: QuestionRepository
+    private val questionRepository: QuestionRepository,
+    private val userRepository: UserRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TopicsUIState())
@@ -23,15 +25,34 @@ class TopicsViewModel @Inject constructor(
 
     fun loadTopics() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            val user = questionRepository.getUserRepository().getCurrentUserSync()
-            user?.let {
-                val topics = questionRepository.getAllTopicsWithProgress(it.id)
+            try {
+                val user = userRepository.getCurrentUserSync()
+
+                if (user != null) {
+                    val topicsProgress = questionRepository.getAllTopicsWithProgress(user.id)
+
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            topics = topicsProgress,
+                            errorMessage = null
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "Пользователь не найден"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        topics = topics
+                        errorMessage = "Ошибка загрузки тем: ${e.message}"
                     )
                 }
             }
@@ -41,10 +62,8 @@ class TopicsViewModel @Inject constructor(
     fun selectTopic(topic: String) {
         _uiState.update { it.copy(selectedTopic = topic) }
     }
-}
 
-data class TopicsUIState(
-    val isLoading: Boolean = false,
-    val topics: List<TopicWithProgressUI> = emptyList(),
-    val selectedTopic: String? = null
-)
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+}

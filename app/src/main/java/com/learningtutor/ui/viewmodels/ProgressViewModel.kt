@@ -7,15 +7,13 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import com.learningtutor.data.repositories.QuestionRepository
 import com.learningtutor.data.repositories.UserRepository
-import com.learningtutor.ui.models.TopicWithProgressUI
-import com.learningtutor.ui.models.UserStatsUI
-import java.util.*
+import com.learningtutor.ui.models.ProgressUIState
 import javax.inject.Inject
 
 @HiltViewModel
 class ProgressViewModel @Inject constructor(
-    private val questionRepository: QuestionRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val questionRepository: QuestionRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProgressUIState())
@@ -27,77 +25,60 @@ class ProgressViewModel @Inject constructor(
 
     fun loadProgressData() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
 
-            val user = userRepository.getCurrentUserSync()
-            user?.let {
-                // Загружаем статистику пользователя
-                val stats = questionRepository.getUserStats(it.id)
-                val userStats = UserStatsUI(
-                    totalQuestions = stats?.total ?: 0,
-                    correctAnswers = stats?.correct ?: 0,
-                    accuracy = if (stats?.total != null && stats.total > 0) {
-                        stats.correct.toDouble() / stats.total
-                    } else 0.0,
-                    currentTheta = it.currentTheta,
-                    avgResponseTime = stats?.avgTimeCorrect ?: 0.0
-                )
+            try {
+                val user = userRepository.getCurrentUserSync()
 
-                // Загружаем прогресс по темам
-                val topicsProgress = questionRepository.getAllTopicsWithProgress(it.id)
+                if (user != null) {
+                    // Загружаем статистику пользователя
+                    val userStats = questionRepository.getUserStats(user.id)
 
-                // Загружаем историю тета
-                val thetaHistory = userRepository.getUserThetaHistory()
+                    // Загружаем историю theta
+                    val thetaHistory = userRepository.getUserThetaHistory()
 
+                    // Загружаем прогресс по темам
+                    val topicsProgress = questionRepository.getAllTopicsWithProgress(user.id)
+
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            userName = user.name,
+                            currentTheta = user.currentTheta,
+                            totalQuestions = userStats?.total ?: 0,
+                            correctAnswers = userStats?.correct ?: 0,
+                            accuracy = if (userStats?.total != null && userStats.total > 0) {
+                                userStats.correct.toDouble() / userStats.total
+                            } else 0.0,
+                            thetaHistory = thetaHistory,
+                            topicsProgress = topicsProgress,
+                            errorMessage = null
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = "Пользователь не найден"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        userStats = userStats,
-                        topicsProgress = topicsProgress,
-                        thetaHistory = thetaHistory
+                        errorMessage = "Ошибка загрузки данных: ${e.message}"
                     )
                 }
             }
         }
     }
 
-    fun selectTopic(topic: String) {
-        viewModelScope.launch {
-            val user = userRepository.getCurrentUserSync() ?: return@launch
+    fun refresh() {
+        loadProgressData()
+    }
 
-            val topicStats = questionRepository.getTopicStats(user.id, topic)
-            val details = TopicDetails(
-                topic = topic,
-                mastery = if (topicStats?.total != null && topicStats.total > 0) {
-                    topicStats.correct.toDouble() / topicStats.total
-                } else 0.0,
-                nextReview = null // Можно дополнить
-            )
-
-            _uiState.update {
-                it.copy(
-                    selectedTopic = topic,
-                    topicDetails = details
-                )
-            }
-        }
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
     }
 }
-
-// UI State для ProgressScreen
-data class ProgressUIState(
-    val isLoading: Boolean = false,
-    val userStats: UserStatsUI? = null,
-    val topicsProgress: List<TopicWithProgressUI> = emptyList(),
-    val thetaHistory: List<Pair<Long, Double>> = emptyList(),
-    val selectedTopic: String? = null,
-    val topicDetails: TopicDetails? = null
-)
-
-data class TopicDetails(
-    val topic: String,
-    val mastery: Double,
-    val nextReview: Date?,
-    val difficultyHistory: List<Pair<Date, Double>> = emptyList(),
-    val commonMistakes: List<String> = emptyList()
-)

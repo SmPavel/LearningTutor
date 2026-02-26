@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.learningtutor.core.ml.IRTEngine
 import com.learningtutor.core.ml.SpacedRepetition
 import com.learningtutor.core.models.Question
@@ -267,20 +268,41 @@ class LearningViewModel @Inject constructor(
     }
 
     private fun convertToUI(question: Question): QuestionUI {
+        // Безопасный парсинг JSON с fallback
         val options = try {
-            gson.fromJson(question.optionsJson, Array<String>::class.java).toList()
+            val type = object : TypeToken<Array<String>>() {}.type
+            val result: Array<String>? = gson.fromJson(question.optionsJson, type)
+            result?.toList() ?: createFallbackOptions()
         } catch (e: Exception) {
-            listOf("Ошибка загрузки вариантов")
+            Log.e(TAG, "Ошибка парсинга JSON для вопроса ${question.id}", e)
+            createFallbackOptions()
+        }
+
+        // Проверка корректности correctIndex
+        val safeCorrectIndex = if (question.correctIndex in options.indices) {
+            question.correctIndex
+        } else {
+            Log.w(TAG, "Некорректный correctIndex: ${question.correctIndex}, устанавливаем 0")
+            0
         }
 
         return QuestionUI(
             id = question.id,
-            text = question.text,
+            text = question.text.ifBlank { "Вопрос без текста" },
             options = options,
-            correctIndex = question.correctIndex,
-            explanation = question.explanation,
-            difficulty = question.difficulty,
-            topic = question.topic
+            correctIndex = safeCorrectIndex,
+            explanation = question.explanation.ifBlank { "Объяснение отсутствует" },
+            difficulty = question.difficulty.coerceIn(0.1, 5.0),
+            topic = question.topic.ifBlank { "Общая тема" }
+        )
+    }
+
+    private fun createFallbackOptions(): List<String> {
+        return listOf(
+            "Вариант 1",
+            "Вариант 2",
+            "Вариант 3",
+            "Вариант 4"
         )
     }
     fun loadTestQuestion() {
